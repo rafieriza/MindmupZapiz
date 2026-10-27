@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="id" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PetaKonsep - Pembuat Mind Map Cepat & Gratis</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0284c7',
+                            600: '#0369a1',
+                            700: '#075985',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- D3.js untuk Panning & Zooming + SVG Math -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Font: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        
+        /* Custom Dot Background Pattern */
+        .bg-grid-light {
+            background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+            background-size: 24px 24px;
+        }
+        .dark .bg-grid-dark {
+            background-image: radial-gradient(#334155 1px, transparent 1px);
+            background-size: 24px 24px;
+        }
+
+        /* Prevent text selection when dragging */
+        .no-select {
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* Smooth CSS Transitions for Node Selection */
+        .node-element {
+            transition: stroke 0.15s ease, stroke-width 0.15s ease, filter 0.15s ease;
+        }
+        .node-element:hover {
+            filter: drop-shadow(0 4px 6px rgba(0,0,0,0.1));
+        }
+
+        /* Context Menu Styles */
+        #context-menu {
+            display: none;
+            position: absolute;
+            z-index: 1000;
+        }
+
+        /* Hide scrollbars for clean UI */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="h-full w-full overflow-hidden bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 flex flex-col no-select">
+
+    <!-- HEADER / TOOLBAR UTAMA -->
+    <header class="h-14 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur px-4 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center gap-3">
+            <div class="bg-brand-600 text-white p-2 rounded-lg flex items-center justify-center shadow-md shadow-brand-500/20">
+                <i class="fa-solid fa-sitemap text-lg"></i>
+            </div>
+            <div>
+                <input id="map-title" type="text" value="Peta Konsep Baru" class="font-semibold text-slate-800 dark:text-slate-100 bg-transparent border border-transparent hover:border-slate-300 dark:hover:border-slate-700 focus:border-brand-500 rounded px-1.5 py-0.5 text-sm focus:outline-none transition" />
+                <span class="text-xs text-slate-400 block -mt-1 pl-1.5">Draft Otomatis</span>
+            </div>
+        </div>
+
+        <!-- Tengah: Quick Action Controls -->
+        <div class="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+            <button onclick="addChildNode()" title="Tambah Anak Node (Tab)" class="px-2.5 py-1.5 rounded-lg text-xs font-medium hover:bg-white dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 shadow-sm transition flex items-center gap-1.5">
+                <i class="fa-solid fa-plus text-brand-500"></i> Sub-topik <kbd class="hidden sm:inline-block px-1 text-[10px] bg-slate-200 dark:bg-slate-600 rounded">Tab</kbd>
+            </button>
+            <button onclick="addSiblingNode()" title="Tambah Node Setara (Enter)" class="px-2.5 py-1.5 rounded-lg text-xs font-medium hover:bg-white dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 shadow-sm transition flex items-center gap-1.5">
+                <i class="fa-solid fa-arrows-split-up-and-left text-emerald-500"></i> Topik Setara <kbd class="hidden sm:inline-block px-1 text-[10px] bg-slate-200 dark:bg-slate-600 rounded">Enter</kbd>
+            </button>
+            <div class="h-4 w-[1px] bg-slate-300 dark:bg-slate-700 my-auto mx-0.5"></div>
+            <button onclick="deleteSelectedNode()" title="Hapus Node (Delete)" class="px-2.5 py-1.5 rounded-lg text-xs font-medium hover:bg-red-50 dark:hover:bg-red-950/40 text-red-600 dark:text-red-400 transition flex items-center gap-1.5">
+                <i class="fa-solid fa-trash-can"></i> Hapus
+            </button>
+        </div>
+
+        <!-- Kanan: Mode, Layout, Export -->
+        <div class="flex items-center gap-2">
+            <button onclick="autoLayout()" title="Tata Letak Otomatis" class="p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                <i class="fa-solid fa-wand-magic-sparkles"></i>
+            </button>
+            <button onclick="toggleDarkMode()" title="Ganti Tema" class="p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                <i id="theme-icon" class="fa-solid fa-moon"></i>
+            </button>
+            
+            <div class="h-4 w-[1px] bg-slate-300 dark:bg-slate-700 my-auto"></div>
+
+            <!-- Export Dropdown -->
+            <div class="relative inline-block text-left">
+                <button onclick="toggleExportMenu()" class="bg-brand-600 hover:bg-brand-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow-sm flex items-center gap-1.5 transition">
+                    <i class="fa-solid fa-download"></i> Ekspor / Simpan <i class="fa-solid fa-chevron-down text-[10px]"></i>
+                </button>
+                <div id="export-menu" class="hidden absolute right-0 mt-2 w-48 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 py-1 z-50 text-xs">
+                    <button onclick="exportJSON()" class="w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
+                        <i class="fa-solid fa-file-code text-amber-500"></i> Simpan JSON (Proyek)
+                    </button>
+                    <button onclick="triggerImportJSON()" class="w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 border-b border-slate-100 dark:border-slate-700">
+                        <i class="fa-solid fa-file-import text-blue-500"></i> Buka File JSON
+                    </button>
+                    <button onclick="exportPNG()" class="w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
+                        <i class="fa-solid fa-file-image text-emerald-500"></i> Unduh Gambar PNG
+                    </button>
+                    <button onclick="exportSVG()" class="w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
+                        <i class="fa-solid fa-vector-square text-purple-500"></i> Unduh Vektor SVG
+                    </button>
+                </div>
+            </div>
+            <input type="file" id="import-json-input" class="hidden" accept=".json" onchange="importJSON(event)">
+        </div>
+    </header>
+
+    <!-- AREA KERJA MAIN CANVAS & FLOATING PANELS -->
+    <div class="relative flex-1 w-full h-full overflow-hidden">
+        
+        <!-- CANVAS SVG -->
+        <div id="canvas-container" class="w-full h-full bg-grid-light dark:bg-grid-dark cursor-grab active:cursor-grabbing">
+            <svg id="mindmap-svg" class="w-full h-full">
+                <g id="viewport">
+                    <g id="connectors-layer"></g>
+                    <g id="nodes-layer"></g>
+                </g>
+            </svg>
+        </div>
+
+        <!-- FLOATING TOOLBAR STYLING (Hanya Muncul saat Node Dipilih) -->
+        <div id="node-styling-bar" class="absolute top-4 left-1/2 -translate-x-1/2 bg-white/90 dark:bg-slate-800/90 backdrop-blur border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl px-3 py-2 flex items-center gap-3 z-30 transition-all duration-200 opacity-0 pointer-events-none transform -translate-y-2">
+            <!-- Warna Background Node -->
+            <div class="flex items-center gap-1">
+                <span class="text-[11px] text-slate-400 font-medium mr-1">Node:</span>
+                <button onclick="setNodeColor('#ffffff')" class="w-5 h-5 rounded-full border border-slate-300 bg-white hover:scale-110 transition"></button>
+                <button onclick="setNodeColor('#e0f2fe')" class="w-5 h-5 rounded-full border border-sky-300 bg-sky-100 hover:scale-110 transition"></button>
+                <button onclick="setNodeColor('#dcfce7')" class="w-5 h-5 rounded-full border border-emerald-300 bg-emerald-100 hover:scale-110 transition"></button>
+                <button onclick="setNodeColor('#fef9c3')" class="w-5 h-5 rounded-full border border-yellow-300 bg-yellow-100 hover:scale-110 transition"></button>
+                <button onclick="setNodeColor('#fce7f3')" class="w-5 h-5 rounded-full border border-pink-300 bg-pink-100 hover:scale-110 transition"></button>
+                <button onclick="setNodeColor('#f3e8ff')" class="w-5 h-5 rounded-full border border-purple-300 bg-purple-100 hover:scale-110 transition"></button>
+                <input type="color" id="custom-bg-color" onchange="setNodeColor(this.value)" class="w-5 h-5 rounded cursor-pointer opacity-0 absolute w-5 h-5 overflow-hidden">
+            </div>
+
+            <div class="h-4 w-[1px] bg-slate-200 dark:bg-slate-700"></div>
+
+            <!-- Teks Format -->
+            <div class="flex items-center gap-1">
+                <button onclick="toggleTextFormat('bold')" title="Tebal" class="w-7 h-7 rounded hover:bg-slate-100 dark:hover:bg-slate-700 font-bold text-xs flex items-center justify-center">B</button>
+                <button onclick="toggleTextFormat('italic')" title="Miring" class="w-7 h-7 rounded hover:bg-slate-100 dark:hover:bg-slate-700 italic font-serif text-xs flex items-center justify-center">I</button>
+                <input type="color" id="text-color-picker" onchange="setTextColor(this.value)" class="w-5 h-5 rounded border-0 cursor-pointer bg-transparent" title="Warna Teks">
+            </div>
+
+            <div class="h-4 w-[1px] bg-slate-200 dark:bg-slate-700"></div>
+
+            <!-- Shape Style -->
+            <div class="flex items-center gap-1">
+                <button onclick="setNodeShape('rounded')" title="Persegi Rounded" class="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-xs"><i class="fa-regular fa-square font-bold"></i></button>
+                <button onclick="setNodeShape('pill')" title="Bentuk Kapsul" class="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-xs"><i class="fa-solid fa-capsules"></i></button>
+                <button onclick="setNodeShape('rect')" title="Persegi Tajam" class="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-xs"><i class="fa-solid fa-vector-square"></i></button>
+            </div>
+        </div>
+
+        <!-- CONTROLS ZOOM BOTTOM-RIGHT -->
+        <div class="absolute bottom-4 right-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg p-1 flex items-center gap-1 z-20">
+            <button onclick="zoomIn()" class="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg text-xs" title="Zoom In"><i class="fa-solid fa-plus"></i></button>
+            <button onclick="resetZoom()" class="px-2 py-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg text-xs font-semibold" title="Reset Zoom" id="zoom-percentage">100%</button>
+            <button onclick="zoomOut()" class="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg text-xs" title="Zoom Out"><i class="fa-solid fa-minus"></i></button>
+            <div class="h-4 w-[1px] bg-slate-200 dark:bg-slate-700 my-auto"></div>
+            <button onclick="recenterMap()" class="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg text-xs text-brand-600 dark:text-brand-400" title="Pusatkan Peta"><i class="fa-solid fa-crosshairs"></i></button>
+        </div>
+
+        <!-- KARTU PETUNJUK SHORTCUT (BOTTOM-LEFT) -->
+        <div class="absolute bottom-4 left-4 z-20">
+            <button onclick="toggleHelpPanel()" class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2.5 rounded-xl shadow-lg text-xs font-medium flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-750 transition">
+                <i class="fa-solid fa-keyboard text-brand-500"></i> Shortcut Pintas
+            </button>
+            <div id="help-panel" class="hidden absolute bottom-12 left-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl p-4 w-64 text-xs space-y-2 z-30">
+                <h4 class="font-bold border-b border-slate-200 dark:border-slate-700 pb-1.5 flex justify-between items-center">
+                    <span>Panduan Shortcut</span>
+                    <i class="fa-solid fa-xmark cursor-pointer" onclick="toggleHelpPanel()"></i>
+                </h4>
+                <div class="flex justify-between"><span>Sub-topik Baru:</span> <kbd class="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 rounded font-mono border">Tab</kbd></div>
+                <div class="flex justify-between"><span>Topik Setara:</span> <kbd class="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 rounded font-mono border">Enter</kbd></div>
+                <div class="flex justify-between"><span>Edit Teks:</span> <kbd class="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 rounded font-mono border">Klik 2x / F2</kbd></div>
+                <div class="flex justify-between"><span>Hapus Node:</span> <kbd class="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 rounded font-mono border">Delete</kbd></div>
+                <div class="flex justify-between"><span>Geser Layar:</span> <kbd class="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 rounded font-mono border">Drag Canvas</kbd></div>
+                <div class="flex justify-between"><span>Batal/Undo:</span> <kbd class="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 rounded font-mono border">Ctrl + Z</kbd></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script>
+        // Data Struktur Peta Konsep Utama
+        let mindMapData = {
+            id: 'root',
+            text: 'Gagasan Utama',
+            style: {
+                bg: '#0284c7',
+                color: '#ffffff',
+                bold: true,
+                italic: false,
+                shape: 'rounded'
+            },
+            children: [
+                {
+                    id: 'node-1',
+                    text: 'Sub Topik 1',
+                    style: { bg: '#ffffff', color: '#1e293b', bold: false, italic: false, shape: 'rounded' },
+                    children: [
+                        { id: 'node-1-1', text: 'Detail Ide A', style: { bg: '#ffffff', color: '#1e293b' }, children: [] },
+                        { id: 'node-1-2', text: 'Detail Ide B', style: { bg: '#ffffff', color: '#1e293b' }, children: [] }
+                    ]
+                },
+                {
+                    id: 'node-2',
+                    text: 'Sub Topik 2',
+                    style: { bg: '#ffffff', color: '#1e293b', bold: false, italic: false, shape: 'rounded' },
+                    children: [
+                        { id: 'node-2-1', text: 'Rencana Aksi', style: { bg: '#ffffff', color: '#1e293b' }, children: [] }
+                    ]
+                }
+            ]
+        };
+
+        // Variables Global
+        let selectedNodeId = 'root';
+        let zoomBehavior;
+        let svg, gViewport;
+        let historyStack = [];
+
+        // Inisialisasi Aplikasi saat Load
+        window.onload = function () {
+            setupD3Canvas();
+            loadFromLocalStorage();
+            renderMindMap();
+            setupKeyboardListeners();
+
+            // Auto-close export menu on click outside
+            window.addEventListener('click', function (e) {
+                if (!e.target.closest('.relative')) {
+                    document.getElementById('export-menu').classList.add('hidden');
+                }
+            });
+        };
+
+        // Setup Canvas & D3 Zoom/Pan
+        function setupD3Canvas() {
+            svg = d3.select("#mindmap-svg");
+            gViewport = d3.select("#viewport");
+
+            zoomBehavior = d3.zoom()
+                .scaleExtent([0.2, 3])
+                .on("zoom", (event) => {
+                    gViewport.attr("transform", event.transform);
+                    document.getElementById('zoom-percentage').innerText = `${Math.round(event.transform.k * 100)}%`;
+                });
+
+            svg.call(zoomBehavior).on("dblclick.zoom", null);
+            recenterMap();
+        }
+
+        // Pindahkan Tampilan ke Tengah
+        function recenterMap() {
+            const container = document.getElementById('canvas-container');
+            const w = container.clientWidth;
+            const h = container.clientHeight;
+            svg.transition().duration(500).call(
+                zoomBehavior.transform,
+                d3.zoomIdentity.translate(w / 4, h / 2).scale(1)
+            );
+        }
+
+        // Menyimpan State Undo History
+        function saveHistory() {
+            historyStack.push(JSON.stringify(mindMapData));
+            if (historyStack.length > 20) historyStack.shift();
+            saveToLocalStorage();
+        }
+
+        function undo() {
+            if (historyStack.length > 0) {
+                mindMapData = JSON.parse(historyStack.pop());
+                renderMindMap();
+                saveToLocalStorage();
+            }
+        }
+
+        // Simpan Data Otomatis ke LocalStorage
+        function saveToLocalStorage() {
+            localStorage.setItem('peta_konsep_data', JSON.stringify(mindMapData));
+            localStorage.setItem('peta_konsep_title', document.getElementById('map-title').value);
+        }
+
+        function loadFromLocalStorage() {
+            const saved = localStorage.getItem('peta_konsep_data');
+            const savedTitle = localStorage.getItem('peta_konsep_title');
+            if (saved) {
+                try { mindMapData = JSON.parse(saved); } catch (e) { }
+            }
+            if (savedTitle) {
+                document.getElementById('map-title').value = savedTitle;
+            }
+        }
+
+        // Algoritma Renders Mindmap Layout
+        function renderMindMap() {
+            const nodesLayer = d3.select("#nodes-layer");
+            const connectorsLayer = d3.select("#connectors-layer");
+
+            nodesLayer.selectAll("*").remove();
+            connectorsLayer.selectAll("*").remove();
+
+            // Gunakan Tree Hierarchy D3 untuk kalkulasi posisi
+            const root = d3.hierarchy(mindMapData);
+            const treeLayout = d3.tree().nodeSize([60, 220]); // Spasial vertikal, horisontal
+            treeLayout(root);
+
+            // 1. Gambar Connectors (Garis Lengkung SVG)
+            const links = root.links();
+            connectorsLayer.selectAll('.connector')
+                .data(links)
+                .enter()
+                .append('path')
+                .attr('class', 'connector')
+                .attr('d', d => {
+                    return `M ${d.source.y} ${d.source.x}
+                            C ${(d.source.y + d.target.y) / 2} ${d.source.x},
+                              ${(d.source.y + d.target.y) / 2} ${d.target.x},
+                              ${d.target.y} ${d.target.x}`;
+                })
+                .attr('fill', 'none')
+                .attr('stroke', document.documentElement.classList.contains('dark') ? '#475569' : '#cbd5e1')
+                .attr('stroke-width', 2.5);
+
+            // 2. Gambar Nodes
+            const nodes = nodesLayer.selectAll('.node-group')
+                .data(root.descendants())
+                .enter()
+                .append('g')
+                .attr('class', 'node-group')
+                .attr('transform', d => `translate(${d.y},${d.x})`)
+                .style('cursor', 'pointer')
+                .on('click', (event, d) => {
+                    event.stopPropagation();
+                    selectNode(d.data.id);
+                })
+                .on('dblclick', (event, d) => {
+                    event.stopPropagation();
+                    editNodeText(d.data.id);
+                });
+
+            // Render Elemen Fisik Node
+            nodes.each(function (d) {
+                const group = d3.select(this);
+                const isSelected = d.data.id === selectedNodeId;
+                const style = d.data.style || {};
+                const isRoot = d.data.id === 'root';
+
+                // Teks temp untuk mengukur lebar node otomatis
+                const tempText = group.append('text')
+                    .text(d.data.text)
+                    .attr('font-size', isRoot ? '15px' : '13px')
+                    .attr('font-weight', style.bold ? 'bold' : 'normal')
+                    .style('visibility', 'hidden');
+
+                const textWidth = Math.max(tempText.node().getComputedTextLength() || 60, 50);
+                tempText.remove();
+
+                const paddingX = 20;
+                const rectWidth = textWidth + paddingX * 2;
+                const rectHeight = isRoot ? 42 : 36;
+                const rx = style.shape === 'pill' ? rectHeight / 2 : (style.shape === 'rect' ? 2 : 8);
+
+                // Background Node Shape
+                group.append('rect')
+                    .attr('class', 'node-element')
+                    .attr('x', -paddingX)
+                    .attr('y', -rectHeight / 2)
+                    .attr('width', rectWidth)
+                    .attr('height', rectHeight)
+                    .attr('rx', rx)
+                    .attr('fill', style.bg || (isRoot ? '#0284c7' : '#ffffff'))
+                    .attr('stroke', isSelected ? '#0284c7' : (document.documentElement.classList.contains('dark') ? '#334155' : '#e2e8f0'))
+                    .attr('stroke-width', isSelected ? 3 : 1.5)
+                    .style('filter', isSelected ? 'drop-shadow(0 0 8px rgba(2, 132, 199, 0.4))' : 'none');
+
+                // Teks Node
+                group.append('text')
+                    .text(d.data.text)
+                    .attr('x', rectWidth / 2 - paddingX)
+                    .attr('y', 4)
+                    .attr('text-anchor', 'middle')
+                    .attr('fill', style.color || (isRoot ? '#ffffff' : (document.documentElement.classList.contains('dark') ? '#f8fafc' : '#1e293b')))
+                    .attr('font-size', isRoot ? '15px' : '13px')
+                    .attr('font-weight', style.bold ? 'bold' : '500')
+                    .attr('font-style', style.italic ? 'italic' : 'normal');
+            });
+
+            updateStylingBarVisibility();
+        }
+
+        // Seleksi Node
+        function selectNode(id) {
+            selectedNodeId = id;
+            renderMindMap();
+        }
+
+        // Tampilkan/Sembunyikan Toolbar Styling Node
+        function updateStylingBarVisibility() {
+            const bar = document.getElementById('node-styling-bar');
+            if (selectedNodeId) {
+                bar.classList.remove('opacity-0', 'pointer-events-none', '-translate-y-2');
+            } else {
+                bar.classList.add('opacity-0', 'pointer-events-none', '-translate-y-2');
+            }
+        }
+
+        // Cari Node Berdasarkan ID dalam Tree
+        function findNodeById(root, id) {
+            if (root.id === id) return root;
+            if (root.children) {
+                for (let child of root.children) {
+                    let res = findNodeById(child, id);
+                    if (res) return res;
+                }
+            }
+            return null;
+        }
+
+        // Cari Induk Node
+        function findParentNode(root, childId) {
+            if (root.children) {
+                for (let child of root.children) {
+                    if (child.id === childId) return root;
+                    let res = findParentNode(child, childId);
+                    if (res) return res;
+                }
+            }
+            return null;
+        }
+
+        // Tambah Sub-Topik (Child Node)
+        function addChildNode() {
+            if (!selectedNodeId) return;
+            saveHistory();
+            const parent = findNodeById(mindMapData, selectedNodeId);
+            if (parent) {
+                if (!parent.children) parent.children = [];
+                const newId = 'node-' + Date.now();
+                parent.children.push({
+                    id: newId,
+                    text: 'Sub-topik Baru',
+                    style: { bg: document.documentElement.classList.contains('dark') ? '#1e293b' : '#ffffff', color: document.documentElement.classList.contains('dark') ? '#f8fafc' : '#1e293b' },
+                    children: []
+                });
+                selectedNodeId = newId;
+                renderMindMap();
+                saveToLocalStorage();
+                editNodeText(newId);
+            }
+        }
+
+        // Tambah Topik Setara (Sibling Node)
+        function addSiblingNode() {
+            if (!selectedNodeId || selectedNodeId === 'root') {
+                addChildNode();
+                return;
+            }
+            saveHistory();
+            const parent = findParentNode(mindMapData, selectedNodeId);
+            if (parent) {
+                const newId = 'node-' + Date.now();
+                const index = parent.children.findIndex(c => c.id === selectedNodeId);
+                parent.children.splice(index + 1, 0, {
+                    id: newId,
+                    text: 'Topik Baru',
+                    style: { bg: document.documentElement.classList.contains('dark') ? '#1e293b' : '#ffffff', color: document.documentElement.classList.contains('dark') ? '#f8fafc' : '#1e293b' },
+                    children: []
+                });
+                selectedNodeId = newId;
+                renderMindMap();
+                saveToLocalStorage();
+                editNodeText(newId);
+            }
+        }
+
+        // Edit Teks Node (Pop Up Prompt Sederhana & Langsung)
+        function editNodeText(id) {
+            const node = findNodeById(mindMapData, id);
+            if (!node) return;
+            
+            const newText = prompt("Ubah Nama Node/Topik:", node.text);
+            if (newText !== null && newText.trim() !== "") {
+                saveHistory();
+                node.text = newText.trim();
+                renderMindMap();
+                saveToLocalStorage();
+            }
+        }
+
+        // Hapus Node
+        function deleteSelectedNode() {
+            if (!selectedNodeId || selectedNodeId === 'root') {
+                alert("Topik Utama (Root) tidak dapat dihapus!");
+                return;
+            }
+            saveHistory();
+            const parent = findParentNode(mindMapData, selectedNodeId);
+            if (parent) {
+                parent.children = parent.children.filter(c => c.id !== selectedNodeId);
+                selectedNodeId = parent.id;
+                renderMindMap();
+                saveToLocalStorage();
+            }
+        }
+
+        // Styling Controls
+        function setNodeColor(hexColor) {
+            const node = findNodeById(mindMapData, selectedNodeId);
+            if (node) {
+                saveHistory();
+                if (!node.style) node.style = {};
+                node.style.bg = hexColor;
+                renderMindMap();
+                saveToLocalStorage();
+            }
+        }
+
+        function setTextColor(hexColor) {
+            const node = findNodeById(mindMapData, selectedNodeId);
+            if (node) {
+                saveHistory();
+                if (!node.style) node.style = {};
+                node.style.color = hexColor;
+                renderMindMap();
+                saveToLocalStorage();
+            }
+        }
+
+        function toggleTextFormat(type) {
+            const node = findNodeById(mindMapData, selectedNodeId);
+            if (node) {
+                saveHistory();
+                if (!node.style) node.style = {};
+                node.style[type] = !node.style[type];
+                renderMindMap();
+                saveToLocalStorage();
+            }
+        }
+
+        function setNodeShape(shapeType) {
+            const node = findNodeById(mindMapData, selectedNodeId);
+            if (node) {
+                saveHistory();
+                if (!node.style) node.style = {};
+                node.style.shape = shapeType;
+                renderMindMap();
+                saveToLocalStorage();
+            }
+        }
+
+        // Auto Layouting Tree
+        function autoLayout() {
+            recenterMap();
+        }
+
+        // Shortcuts Listener
+        function setupKeyboardListeners() {
+            window.addEventListener('keydown', (e) => {
+                if (e.target.tagName === 'INPUT') return; // Abaikan saat mengetik di input
+
+                if (e.key === 'Tab') {
+                    e.preventDefault();
+                    addChildNode();
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addSiblingNode();
+                } else if (e.key === 'Delete' || e.key === 'Backspace') {
+                    e.preventDefault();
+                    deleteSelectedNode();
+                } else if (e.key === 'F2') {
+                    e.preventDefault();
+                    editNodeText(selectedNodeId);
+                } else if (e.ctrlKey && e.key === 'z') {
+                    e.preventDefault();
+                    undo();
+                }
+            });
+        }
+
+        // Zoom Helpers
+        function zoomIn() { svg.transition().duration(200).call(zoomBehavior.scaleBy, 1.2); }
+        function zoomOut() { svg.transition().duration(200).call(zoomBehavior.scaleBy, 0.8); }
+        function resetZoom() { svg.transition().duration(200).call(zoomBehavior.scaleTo, 1); }
+
+        // Toggle Help & Dark Mode
+        function toggleHelpPanel() {
+            document.getElementById('help-panel').classList.toggle('hidden');
+        }
+
+        function toggleDarkMode() {
+            const html = document.documentElement;
+            const icon = document.getElementById('theme-icon');
+            if (html.classList.contains('dark')) {
+                html.classList.remove('dark');
+                icon.className = 'fa-solid fa-moon';
+            } else {
+                html.classList.add('dark');
+                icon.className = 'fa-solid fa-sun';
+            }
+            renderMindMap();
+        }
+
+        function toggleExportMenu() {
+            document.getElementById('export-menu').classList.toggle('hidden');
+        }
+
+        // EKSPOR & IMPOR DATA (JSON / PNG / SVG)
+        function exportJSON() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(mindMapData, null, 2));
+            const filename = (document.getElementById('map-title').value || 'mindmap') + '.json';
+            const dlAnchorElem = document.createElement('a');
+            dlAnchorElem.setAttribute("href", dataStr);
+            dlAnchorElem.setAttribute("download", filename);
+            dlAnchorElem.click();
+        }
+
+        function triggerImportJSON() {
+            document.getElementById('import-json-input').click();
+        }
+
+        function importJSON(event) {
+            const fileReader = new FileReader();
+            fileReader.onload = function (e) {
+                try {
+                    mindMapData = JSON.parse(e.target.result);
+                    selectedNodeId = 'root';
+                    renderMindMap();
+                    recenterMap();
+                    saveToLocalStorage();
+                } catch (err) {
+                    alert("File JSON tidak valid!");
+                }
+            };
+            fileReader.readAsText(event.target.files[0]);
+        }
+
+        function exportSVG() {
+            const svgElement = document.getElementById('mindmap-svg').cloneNode(true);
+            const blob = new Blob([svgElement.outerHTML], { type: 'image/svg+xml;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = (document.getElementById('map-title').value || 'mindmap') + '.svg';
+            a.click();
+        }
+
+        function exportPNG() {
+            const svgElement = document.getElementById('mindmap-svg');
+            const svgData = new XMLSerializer().serializeToString(svgElement);
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('premultiplied') || canvas.getContext('2d');
+            
+            const img = new Image();
+            const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+            const url = URL.createObjectURL(svgBlob);
+
+            img.onload = function () {
+                canvas.width = svgElement.clientWidth || 1200;
+                canvas.height = svgElement.clientHeight || 800;
+                
+                // Background Putih
+                ctx.fillStyle = document.documentElement.classList.contains('dark') ? '#0f172a' : '#ffffff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0);
+
+                const a = document.createElement('a');
+                a.download = (document.getElementById('map-title').value || 'mindmap') + '.png';
+                a.href = canvas.toDataURL('image/png');
+                a.click();
+                URL.revokeObjectURL(url);
+            };
+            img.src = url;
+        }
+    </script>
+</body>
+</html>
